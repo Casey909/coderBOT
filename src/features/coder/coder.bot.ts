@@ -1083,12 +1083,13 @@ export class CoderBot {
                 await CommandMenuUtils.setNoSessionCommands(this.bot);
             }
 
-            await ctx.reply(
+            const sentMsg = await ctx.reply(
                 '✅ *Coder Session Closed*\n\n' +
                 'The coder session has been terminated.\n\n' +
                 'Use /copilot, /opencode, or /gemini to start a new session.',
                 { parse_mode: 'Markdown' }
             );
+            await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 3);
         } catch (error) {
             await ctx.reply(ErrorUtils.createErrorMessage(ErrorActions.CLOSE_TERMINAL, error));
         }
