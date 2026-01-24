@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "coderBOT",
+      name: "remote-copilot",
       script: "./dist/app.js",
       instances: 1,
       autorestart: true,

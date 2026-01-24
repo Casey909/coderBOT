@@ -1,10 +1,10 @@
 {
-  "name": "@tommertom/coderbot",
+  "name": "@tommertom/remote-copilot",
   "version": "0.8.10",
   "description": "AI-powered Telegram bot providing interactive terminal sessions with support for GitHub Copilot, Claude, Cursor, and other CLI-based AI coding assistants",
   "main": "dist/app.js",
   "bin": {
-    "coderbot": "dist/cli.js"
+    "remote-copilot": "dist/cli.js"
   },
   "files": [
     "dist/**/*",
@@ -22,10 +22,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "doPublish": "npm run build:prod && npm version patch && npm publish --access public",
     "pm2:start": "npm run build:prod && pm2 start ecosystem.config.cjs",
-    "pm2:stop": "pm2 stop coderBOT",
-    "pm2:restart": "npm run build:prod && pm2 restart coderBOT",
-    "pm2:delete": "pm2 delete coderBOT",
-    "pm2:logs": "pm2 logs coderBOT",
+    "pm2:stop": "pm2 stop remote-copilot",
+    "pm2:restart": "npm run build:prod && pm2 restart remote-copilot",
+    "pm2:delete": "pm2 delete remote-copilot",
+    "pm2:logs": "pm2 logs remote-copilot",
     "pm2:monit": "pm2 monit",
     "pm2:status": "pm2 status"
   },
