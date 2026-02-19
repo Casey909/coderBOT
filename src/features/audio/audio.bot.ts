@@ -14,6 +14,7 @@ import { AudioTranscriptionError, AudioErrorType, AudioProvider } from './audio.
 import { Messages, AudioErrors, ErrorActions } from '../../constants/messages.js';
 import { ErrorUtils } from '../../utils/error.utils.js';
 import { MessageUtils } from '../../utils/message.utils.js';
+import { buildTelegramFileUrl } from '../../utils/url-validation.utils.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
@@ -185,9 +186,9 @@ export class AudioBot {
                 );
             }
 
-            // Download file from Telegram
+            // Download file from Telegram with URL validation
             const botToken = this.bot!.token;
-            const fileUrl = `https://api.telegram.org/file/bot${botToken}/${file.file_path}`;
+            const fileUrl = buildTelegramFileUrl(botToken, file.file_path);
 
             await this.downloadFile(fileUrl, sanitizedPath);
 

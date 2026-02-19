@@ -1,5 +1,6 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { ConfigService } from '../../services/config.service.js';
+import { validateCdnUrl } from '../../utils/url-validation.utils.js';
 
 export class XtermRendererService {
     private browser: Browser | null = null;
@@ -50,13 +51,24 @@ export class XtermRendererService {
                 this.page = await this.browser.newPage();
                 await this.page.setViewport({ width: 1200, height: 800 });
 
+                // Validate CDN URLs for security
+                const xtermCssUrl = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css';
+                const xtermJsUrl = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js';
+                
+                try {
+                    validateCdnUrl(xtermCssUrl);
+                    validateCdnUrl(xtermJsUrl);
+                } catch (error) {
+                    throw new Error(`CDN URL validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                }
+
                 const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <link rel="stylesheet" href="${xtermCssUrl}" />
+    <script src="${xtermJsUrl}"></script>
     <style>
         body {
             margin: 0;
