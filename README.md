@@ -73,6 +73,33 @@ coderbot
 
 ✅ **Use Docker instead** - Windows users can run CoderBOT using Docker Desktop. See the Docker Installation section below for instructions.
 
+## Security and Privacy
+
+🔒 **Local-First Architecture**: CoderBOT operates primarily on your local machine with minimal external communication.
+
+**What's Local**:
+- ✅ All terminal sessions run locally (no cloud)
+- ✅ File operations are local-only
+- ✅ Session state stored in memory
+- ✅ No telemetry or analytics
+
+**External Services**:
+- **Telegram API** (Required) - For bot messaging
+- **OpenAI/Gemini API** (Optional) - Only if you enable audio transcription
+- **jsDelivr CDN** (Optional) - For terminal rendering (can be bundled locally)
+
+**Security Features**:
+- ✅ URL validation for all external requests
+- ✅ Path traversal protection
+- ✅ Environment-based access control
+- ✅ Optional auto-kill on unauthorized access
+- ✅ Comprehensive security documentation
+
+📖 **Documentation**:
+- [Security Analysis](docs/SECURITY.md) - Detailed security review
+- [Privacy Guide](docs/PRIVACY.md) - External services and data handling
+- [Security Summary](docs/SECURITY_REVIEW_SUMMARY.md) - Quick security overview
+
 ## Features
 
 - 🖥️ **Interactive Terminal**: Full xterm terminal access via Telegram with PTY support

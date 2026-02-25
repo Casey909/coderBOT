@@ -12,6 +12,7 @@ import { ErrorUtils } from '../../utils/error.utils.js';
 import { ScreenRefreshUtils } from '../../utils/screen-refresh.utils.js';
 import { CommandMenuUtils } from '../../utils/command-menu.utils.js';
 import { TextSanitizationUtils } from '../../utils/text-sanitization.utils.js';
+import { buildTelegramFileUrl } from '../../utils/url-validation.utils.js';
 import { Messages, SuccessMessages, ErrorActions } from '../../constants/messages.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -428,7 +429,7 @@ export class CoderBot {
                 return;
             }
 
-            const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
+            const fileUrl = buildTelegramFileUrl(this.botToken, file.file_path);
 
             const timestamp = Date.now();
             const ext = path.extname(file.file_path) || '.jpg';
@@ -473,7 +474,7 @@ export class CoderBot {
                 return;
             }
 
-            const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
+            const fileUrl = buildTelegramFileUrl(this.botToken, file.file_path);
 
             const timestamp = Date.now();
             const ext = path.extname(file.file_path) || '.mp4';
@@ -518,7 +519,7 @@ export class CoderBot {
                 return;
             }
 
-            const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
+            const fileUrl = buildTelegramFileUrl(this.botToken, file.file_path);
 
             const timestamp = Date.now();
             const ext = path.extname(file.file_path) || '.mp3';
@@ -563,7 +564,7 @@ export class CoderBot {
                 return;
             }
 
-            const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
+            const fileUrl = buildTelegramFileUrl(this.botToken, file.file_path);
 
             const timestamp = Date.now();
             const ext = path.extname(file.file_path) || '.ogg';
