@@ -81,6 +81,7 @@ export class CoderBot {
         bot.command('copilot', AccessControlMiddleware.requireAccess, this.handleCopilot.bind(this));
         bot.command('opencode', AccessControlMiddleware.requireAccess, this.handleOpencode.bind(this));
         bot.command('gemini', AccessControlMiddleware.requireAccess, this.handleGemini.bind(this));
+        bot.command('mode', AccessControlMiddleware.requireAccess, this.handleMode.bind(this));
         bot.command('addcoder', AccessControlMiddleware.requireAccess, this.handleAddCoder.bind(this));
         bot.command('removecoder', AccessControlMiddleware.requireAccess, this.handleRemoveCoder.bind(this));
         bot.command('startup', AccessControlMiddleware.requireAccess, this.handleStartup.bind(this));
@@ -358,6 +359,25 @@ export class CoderBot {
                     }
                     this.mdFileCache.delete(userId);
                 }
+                return;
+            }
+
+            // Handle Copilot CLI quick action buttons
+            if (callbackData === 'key_shifttab' || callbackData === 'key_esc' || callbackData === 'key_ctrlc') {
+                if (!this.xtermService.hasSession(userId)) {
+                    await this.safeAnswerCallbackQuery(ctx, Messages.NO_ACTIVE_TERMINAL_SESSION);
+                    return;
+                }
+
+                const keyMap: Record<string, { sequence: string; label: string }> = {
+                    'key_shifttab': { sequence: '\x1b[Z', label: 'Shift+Tab (Mode Switch)' },
+                    'key_esc': { sequence: '\x1b', label: 'Escape' },
+                    'key_ctrlc': { sequence: '\x03', label: 'Ctrl+C' },
+                };
+                const key = keyMap[callbackData];
+                this.xtermService.writeRawToSession(userId, key.sequence);
+                await this.safeAnswerCallbackQuery(ctx, SuccessMessages.SENT_SPECIAL_KEY(key.label));
+                this.triggerAutoRefresh(userId, chatId);
                 return;
             }
 
@@ -813,6 +833,30 @@ export class CoderBot {
     }
 
     /**
+     * Handle /mode command - sends Shift+Tab to switch Copilot CLI modes
+     * (Suggest mode <-> Autopilot mode)
+     */
+    private async handleMode(ctx: Context): Promise<void> {
+        const userId = ctx.from!.id.toString();
+        const chatId = ctx.chat!.id;
+
+        if (!this.xtermService.hasSession(userId)) {
+            await ctx.reply(Messages.NO_ACTIVE_SESSION);
+            return;
+        }
+
+        try {
+            // Send Shift+Tab (escape sequence for mode switching in Copilot CLI)
+            this.xtermService.writeRawToSession(userId, '\x1b[Z');
+            const sentMsg = await ctx.reply('✅ Sent Shift+Tab (Mode Switch)');
+            await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 0.5);
+            this.triggerAutoRefresh(userId, chatId);
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage(ErrorActions.SEND_KEY, error));
+        }
+    }
+
+    /**
      * Check if command name is reserved
      */
     private isReservedCommand(name: string): boolean {
@@ -1005,7 +1049,7 @@ export class CoderBot {
             if (!this.xtermService.hasSession(userId)) {
                 await ctx.reply(
                     '❌ No active session.\n\n' +
-                    'Please start a coder first with /copilot, /opencode, /gemini, or your custom coder.',
+                    'Please start a session first with /copilot or /xterm.',
                     { parse_mode: 'Markdown' }
                 );
                 return;
@@ -1085,9 +1129,9 @@ export class CoderBot {
             }
 
             const sentMsg = await ctx.reply(
-                '✅ *Coder Session Closed*\n\n' +
-                'The coder session has been terminated.\n\n' +
-                'Use /copilot, /opencode, or /gemini to start a new session.',
+                '✅ *Session Closed*\n\n' +
+                'The terminal session has been terminated.\n\n' +
+                'Use /copilot to start a new Copilot CLI session.',
                 { parse_mode: 'Markdown' }
             );
             await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 3);
@@ -1099,14 +1143,19 @@ export class CoderBot {
     private async handleStart(ctx: Context): Promise<void> {
         const sentMsg = await ctx.reply(
             '🤖 *Welcome to coderBOT!*\n\n' +
-            'Your AI-powered terminal assistant is ready to help.\n\n' +
+            'Your AI-powered terminal assistant optimized for GitHub Copilot CLI.\n\n' +
             '*Quick Start:*\n' +
             '/copilot - Start GitHub Copilot CLI\n' +
-            '/opencode - Start OpenCode AI\n' +
-            '/gemini - Start Gemini AI\n' +
             '/xterm - Start raw terminal\n' +
             '/help - Show all available commands\n\n' +
-            'Send any message to interact with the terminal.\n\n' +
+            '*Copilot CLI Modes:*\n' +
+            '• *Suggest* - Agent pauses for your approval\n' +
+            '• *Autopilot* - Agent works until task is complete\n' +
+            'Use /mode or the 🔀 Mode button to switch modes.\n\n' +
+            '*Pro Tips:*\n' +
+            '• Launch with `--experimental` for autopilot mode\n' +
+            '• Use `/model` inside Copilot to switch AI models\n' +
+            '• Send any text to interact with the terminal\n\n' +
             'Happy coding! 🚀',
             { parse_mode: 'Markdown' }
         );
@@ -1116,57 +1165,64 @@ export class CoderBot {
 
     private async handleHelp(ctx: Context): Promise<void> {
         const sentMsg = await ctx.reply(
-            '🤖 *CoderBOT - Complete Command Reference*\n\n' +
+            '🤖 *CoderBOT - Command Reference*\n\n' +
             '*Starting Sessions:*\n' +
             '/copilot - Start GitHub Copilot CLI session\n' +
-            '/opencode - Start OpenCode AI session\n' +
-            '/gemini - Start Gemini AI session\n' +
             '/xterm - Start raw terminal (no AI)\n\n' +
-            '*Custom Coders:*\n' +
-            '/addcoder <name> - Create custom AI assistant (a-z only)\n' +
-            '/removecoder <name> - Remove custom AI assistant\n\n' +
+            '*Copilot CLI Modes (Shift+Tab to cycle):*\n' +
+            '• *Suggest* - Agent pauses for your approval\n' +
+            '• *Autopilot* - Agent continues until task is done\n' +
+            '/mode - Switch Copilot mode (sends Shift+Tab)\n\n' +
+            '*Copilot CLI Slash Commands (type as text):*\n' +
+            '• `.`/model - Switch AI model\n' +
+            '• `.`/experimental - Toggle experimental features\n' +
+            '• `.`/login - Authenticate with GitHub\n' +
+            '• `.`/compact - Toggle compact view\n' +
+            '• `.`/feedback - Submit feedback\n' +
+            '• `.`/lsp - Check LSP server status\n\n' +
             '*Session Management:*\n' +
-            '/startup [prompt] - Set/view auto-startup for current coder\n' +
+            '/startup \\[prompt\\] - Set/view auto-startup for current coder\n' +
             '/startup delete - Remove startup prompt\n' +
             '/close - Close the current terminal session\n\n' +
-            '*Sending Commands to Terminal:*\n' +
-            'Type any message (not starting with /) - Sent directly to terminal with Enter\n' +
-            '.prompt or command - Place a dot to send / commands or literal prompts.\n' +
-            '/keys <text> - Send text without Enter\n\n' +
-            '*Tip:* Use \\[media\] in your text - it will be replaced with the media directory path\n\n' +
-            '*Special Keys:*\n' +
+            '*Sending Input to Terminal:*\n' +
+            'Type any message (not starting with /) - Sent to terminal with Enter\n' +
+            '.command - Prefix with dot to send / commands as text\n' +
+            '/keys <text> - Send text without pressing Enter\n\n' +
+            '*Tip:* Use \\[media\\] in your text to insert the media directory path\n\n' +
+            '*Keyboard Shortcuts:*\n' +
+            '/mode - Send Shift+Tab (switch Copilot mode)\n' +
             '/tab - Send Tab character\n' +
+            '/shifttab - Send Shift+Tab\n' +
             '/enter - Send Enter key\n' +
             '/space - Send Space character\n' +
             '/esc - Send Escape key\n' +
             '/delete - Send Delete/Backspace key\n' +
             '/ctrlc - Send Ctrl+C (interrupt)\n' +
             '/ctrlx - Send Ctrl+X\n' +
+            '/ctrll - Send Ctrl+L (clear screen)\n' +
             '/ctrl <char> - Send any Ctrl+ combination (a-z, @, \\[, \\\\, \\], ^, \\_, ?)\n' +
             '/arrowup - Send Arrow Up key\n' +
             '/arrowdown - Send Arrow Down key\n' +
+            '/arrowleft - Send Arrow Left key\n' +
+            '/arrowright - Send Arrow Right key\n' +
             '/1, /2, /3, /4, /5 - Send number keys\n\n' +
             '*Viewing Output:*\n' +
             '/screen - Capture and view terminal screenshot\n' +
-            '/airplane [on|off] - Toggle/check airplane mode (text vs images)\n' +
-            '/md - Show 5 most recently updated markdown files\n' +
-            'Click 🔄 Refresh button on screenshots to update\n\n' +
-            '*Media Upload & Download:*\n' +
-            '• *Supported Upload Types:*\n' +
-            '  - 📷 Photos (JPG, PNG, WebP, etc.)\n' +
-            '  - 🎥 Videos (MP4, MOV, AVI, etc.)\n' +
-            '  - 🎵 Audio files (MP3, WAV, AAC, etc.)\n' +
-            '  - 🎤 Voice messages (OGG, etc.)\n' +
-            '• Uploaded media is automatically saved to the received directory\n' +
-            '• Files copied to \\[media\\] directory will be sent to you automatically\n' +
-            '• Use \\[media\] in commands - e.g., "cp output.png \\[media\\]" to send files\n' +
-            '• The bot watches this directory and sends any new files to you\n\n' +
-            '*Other:*\n' +
-            '/start - Show quick start guide\n' +
-            '/help - Show this detailed help\n' +
+            '/airplane \\[on|off\\] - Toggle airplane mode (text vs images)\n' +
+            '/md - Show recently updated markdown files\n' +
+            'Click 🔄 Refresh on screenshots to update\n\n' +
+            '*Screenshot Buttons:*\n' +
+            '🔄 Refresh - Update the terminal view\n' +
+            '🔀 Mode - Switch Copilot mode (Shift+Tab)\n' +
+            'ESC - Send Escape key\n' +
+            '⌃C - Send Ctrl+C (interrupt)\n' +
+            '1, 2, 3 - Quick number selection\n\n' +
+            '*Other Commands:*\n' +
+            '/addcoder <name> - Create custom AI assistant\n' +
+            '/removecoder <name> - Remove custom AI assistant\n' +
             '/macros - Show configured message placeholders (m0-m9)\n' +
             '/killbot - Shutdown the bot\n\n' +
-            '💡 *Pro Tip:* Send messages directly to interact with the terminal!',
+            '💡 *Pro Tip:* Use /mode to quickly toggle between Suggest and Autopilot modes!',
             { parse_mode: 'Markdown' }
         );
 
