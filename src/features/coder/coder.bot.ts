@@ -1173,13 +1173,13 @@ export class CoderBot {
             '• *Suggest* - Agent pauses for your approval\n' +
             '• *Autopilot* - Agent continues until task is done\n' +
             '/mode - Switch Copilot mode (sends Shift+Tab)\n\n' +
-            '*Copilot CLI Slash Commands (type as text):*\n' +
-            '• `.`/model - Switch AI model\n' +
-            '• `.`/experimental - Toggle experimental features\n' +
-            '• `.`/login - Authenticate with GitHub\n' +
-            '• `.`/compact - Toggle compact view\n' +
-            '• `.`/feedback - Submit feedback\n' +
-            '• `.`/lsp - Check LSP server status\n\n' +
+            '*Copilot CLI Slash Commands (prefix with dot):*\n' +
+            '• `./model` - Switch AI model\n' +
+            '• `./experimental` - Toggle experimental features\n' +
+            '• `./login` - Authenticate with GitHub\n' +
+            '• `./compact` - Toggle compact view\n' +
+            '• `./feedback` - Submit feedback\n' +
+            '• `./lsp` - Check LSP server status\n\n' +
             '*Session Management:*\n' +
             '/startup \\[prompt\\] - Set/view auto-startup for current coder\n' +
             '/startup delete - Remove startup prompt\n' +

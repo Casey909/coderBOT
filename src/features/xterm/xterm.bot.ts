@@ -536,14 +536,15 @@ export class XtermBot {
                     return;
                 }
 
-                const keyMap: Record<string, { sequence: string; label: string }> = {
-                    'key_shifttab': { sequence: '\x1b[Z', label: 'Shift+Tab (Mode Switch)' },
-                    'key_esc': { sequence: '\x1b', label: 'Escape' },
-                    'key_ctrlc': { sequence: '\x03', label: 'Ctrl+C' },
+                const callbackToKey: Record<string, string> = {
+                    'key_shifttab': 'shifttab',
+                    'key_esc': 'esc',
+                    'key_ctrlc': 'ctrlc',
                 };
-                const key = keyMap[callbackData];
-                this.xtermService.writeRawToSession(userId, key.sequence);
-                await this.safeAnswerCallbackQuery(ctx, SuccessMessages.SENT_SPECIAL_KEY(key.label));
+                const keyName = callbackToKey[callbackData];
+                const keyConfig = this.SPECIAL_KEYS[keyName];
+                this.xtermService.writeRawToSession(userId, keyConfig.sequence);
+                await this.safeAnswerCallbackQuery(ctx, SuccessMessages.SENT_SPECIAL_KEY(keyConfig.display));
                 this.triggerAutoRefresh(userId, chatId);
                 return;
             }
