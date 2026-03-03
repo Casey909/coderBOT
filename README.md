@@ -227,10 +227,14 @@ M8=
 M9=
 
 # Copilot CLI Launch Configuration (Optional)
-# Override Copilot executable path (Windows example shown)
-COPILOT_EXECUTABLE_PATH=C:\Tools\copilot\copilot.exe
-# Base directory used by /projects, /project, /mkproject (Windows example shown)
-COPILOT_PROJECT_BASE_DIR=C:\Projects
+# Override Copilot executable path (cross-platform examples)
+# Linux/macOS: COPILOT_EXECUTABLE_PATH=copilot
+# Windows: COPILOT_EXECUTABLE_PATH=C:\Tools\copilot\copilot.exe
+COPILOT_EXECUTABLE_PATH=copilot
+# Base directory used by /projects, /project, /mkproject
+# Linux/macOS example: /home/your-user/Projects
+# Windows example: C:\Projects
+COPILOT_PROJECT_BASE_DIR=
 # Optional default Copilot CLI arguments
 COPILOT_ARGUMENTS=--allow-all-tools --deny-tool 'shell(rmdir)' --deny-tool 'shell(rm)' --deny-tool 'shell(sudo)'
 

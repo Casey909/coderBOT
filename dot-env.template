@@ -137,8 +137,11 @@ AUDIO_TRANSCRIPTION_DEFAULT_MODE=copy
 COPILOT_EXECUTABLE_PATH=copilot
 
 # Default base directory for project selection commands (/projects, /project, /mkproject)
-# Use an absolute path. On Windows, example: C:\Projects
-COPILOT_PROJECT_BASE_DIR=C:\Projects
+# Use an absolute path.
+# Linux/macOS example: /home/your-user/Projects
+# Windows example: C:\Projects
+# Example: COPILOT_PROJECT_BASE_DIR=/home/your-user/Projects
+COPILOT_PROJECT_BASE_DIR=
 
 COPILOT_ARGUMENTS=--allow-all-tools --deny-tool 'shell(rmdir)' --deny-tool 'shell(rm)' --deny-tool 'shell(sudo)'
 

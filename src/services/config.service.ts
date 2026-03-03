@@ -1,3 +1,6 @@
+import * as path from 'path';
+import * as os from 'os';
+
 /**
  * Configuration Service
  * 
@@ -131,7 +134,7 @@ export class ConfigService {
 
         // Load AI assistant arguments
         this.copilotExecutablePath = process.env.COPILOT_EXECUTABLE_PATH?.trim() || 'copilot';
-        this.copilotProjectBaseDir = process.env.COPILOT_PROJECT_BASE_DIR?.trim() || process.env.HOME || '/tmp';
+        this.copilotProjectBaseDir = process.env.COPILOT_PROJECT_BASE_DIR?.trim() || path.join(os.homedir(), 'Projects');
         this.copilotArguments = process.env.COPILOT_ARGUMENTS || '--allow-all-tools --deny-tool \'shell(rmdir)\' --deny-tool \'shell(rm)\' --deny-tool \'shell(sudo)\'';
         this.geminiArguments = process.env.GEMINI_ARGUMENTS || '';
         this.opencodeArguments = process.env.OPENCODE_ARGUMENTS || '';

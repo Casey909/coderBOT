@@ -25,6 +25,7 @@ export enum AssistantType {
 }
 
 export class CoderBot {
+    private static readonly MAX_PROJECT_DIRS_DISPLAYED = 20;
     private bot: Bot | null = null;
     private botId: string;
     private botToken: string;
@@ -1412,7 +1413,7 @@ export class CoderBot {
         }
 
         if (path.isAbsolute(trimmed)) {
-            throw new Error('Please provide a folder path relative to the configured base directory');
+            throw new Error('Project folder path must be relative, not absolute');
         }
 
         const resolved = path.resolve(baseDir, trimmed);
@@ -1421,10 +1422,6 @@ export class CoderBot {
             throw new Error('Project folder must stay inside the configured base directory');
         }
         return resolved;
-    }
-
-    private shellQuote(value: string): string {
-        return `'${value.replace(/'/g, `'\"'\"'`)}'`;
     }
 
     private async handleProjects(ctx: Context): Promise<void> {
@@ -1436,7 +1433,7 @@ export class CoderBot {
                 .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
                 .map(entry => path.join(baseDir, entry.name))
                 .sort((a, b) => a.localeCompare(b))
-                .slice(0, 20);
+                .slice(0, CoderBot.MAX_PROJECT_DIRS_DISPLAYED);
 
             if (directories.length === 0) {
                 await ctx.reply(
@@ -1460,13 +1457,24 @@ export class CoderBot {
                 { parse_mode: 'Markdown', reply_markup: keyboard }
             );
         } catch (error) {
+            const baseDir = this.getCopilotProjectBaseDir();
+            if (error && typeof error === 'object' && 'code' in error) {
+                const code = (error as NodeJS.ErrnoException).code;
+                if (code === 'ENOENT' || code === 'EACCES') {
+                    await ctx.reply(
+                        `❌ Cannot access project base directory:\n\`${baseDir}\`\n\n` +
+                        `Please verify \`COPILOT_PROJECT_BASE_DIR\` in your .env.`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    return;
+                }
+            }
             await ctx.reply(ErrorUtils.createErrorMessage('list project folders', error));
         }
     }
 
     private async handleProject(ctx: Context): Promise<void> {
         const userId = ctx.from!.id.toString();
-        const chatId = ctx.chat!.id;
         const message = ctx.message?.text || '';
         const arg = message.replace('/project', '').trim();
 
@@ -1493,8 +1501,7 @@ export class CoderBot {
             await ctx.reply(`✅ Project folder set:\n\`${resolvedDir}\``, { parse_mode: 'Markdown' });
 
             if (this.xtermService.hasSession(userId)) {
-                this.xtermService.writeToSession(userId, `cd ${this.shellQuote(resolvedDir)}`);
-                this.triggerAutoRefresh(userId, chatId);
+                await ctx.reply('ℹ️ Folder selection saved. It will be used for the next `/copilot` session.', { parse_mode: 'Markdown' });
             }
         } catch (error) {
             await ctx.reply(ErrorUtils.createErrorMessage('set project folder', error));
@@ -1503,7 +1510,6 @@ export class CoderBot {
 
     private async handleMkproject(ctx: Context): Promise<void> {
         const userId = ctx.from!.id.toString();
-        const chatId = ctx.chat!.id;
         const message = ctx.message?.text || '';
         const arg = message.replace('/mkproject', '').trim();
 
@@ -1520,8 +1526,7 @@ export class CoderBot {
             await ctx.reply(`✅ Project folder ready:\n\`${projectDir}\``, { parse_mode: 'Markdown' });
 
             if (this.xtermService.hasSession(userId)) {
-                this.xtermService.writeToSession(userId, `cd ${this.shellQuote(projectDir)}`);
-                this.triggerAutoRefresh(userId, chatId);
+                await ctx.reply('ℹ️ Folder selection saved. It will be used for the next `/copilot` session.', { parse_mode: 'Markdown' });
             }
         } catch (error) {
             await ctx.reply(ErrorUtils.createErrorMessage('create project folder', error));
