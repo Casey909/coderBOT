@@ -57,14 +57,18 @@ export class XtermBot {
 
     private readonly SPECIAL_KEYS: Record<string, { sequence: string; display: string; type: 'special' | 'control' }> = {
         'tab': { sequence: '\t', display: 'Tab character', type: 'special' },
+        'shifttab': { sequence: '\x1b[Z', display: 'Shift+Tab (switch mode)', type: 'special' },
         'enter': { sequence: '\r', display: 'Enter key', type: 'special' },
         'space': { sequence: ' ', display: 'Space character', type: 'special' },
         'delete': { sequence: '\x7f', display: 'Delete key', type: 'special' },
         'ctrlc': { sequence: '\x03', display: 'C', type: 'control' },
         'ctrlx': { sequence: '\x18', display: 'X', type: 'control' },
+        'ctrll': { sequence: '\x0c', display: 'L', type: 'control' },
         'esc': { sequence: '\x1b', display: 'Escape key', type: 'special' },
         'arrowup': { sequence: '\x1b[A', display: 'Arrow Up key', type: 'special' },
         'arrowdown': { sequence: '\x1b[B', display: 'Arrow Down key', type: 'special' },
+        'arrowleft': { sequence: '\x1b[D', display: 'Arrow Left key', type: 'special' },
+        'arrowright': { sequence: '\x1b[C', display: 'Arrow Right key', type: 'special' },
     };
 
     constructor(
@@ -525,16 +529,22 @@ export class XtermBot {
                 return;
             }
 
-            // Handle ESC key button
-            if (callbackData === 'key_esc') {
+            // Handle Copilot CLI quick action buttons (Shift+Tab, ESC, Ctrl+C)
+            if (callbackData === 'key_shifttab' || callbackData === 'key_esc' || callbackData === 'key_ctrlc') {
                 if (!this.xtermService.hasSession(userId)) {
                     await this.safeAnswerCallbackQuery(ctx, Messages.NO_ACTIVE_TERMINAL_SESSION);
                     return;
                 }
 
-                const escKey = this.SPECIAL_KEYS['esc'];
-                this.xtermService.writeRawToSession(userId, escKey.sequence);
-                await this.safeAnswerCallbackQuery(ctx, SuccessMessages.SENT_SPECIAL_KEY(escKey.display));
+                const callbackToKey: Record<string, string> = {
+                    'key_shifttab': 'shifttab',
+                    'key_esc': 'esc',
+                    'key_ctrlc': 'ctrlc',
+                };
+                const keyName = callbackToKey[callbackData];
+                const keyConfig = this.SPECIAL_KEYS[keyName];
+                this.xtermService.writeRawToSession(userId, keyConfig.sequence);
+                await this.safeAnswerCallbackQuery(ctx, SuccessMessages.SENT_SPECIAL_KEY(keyConfig.display));
                 this.triggerAutoRefresh(userId, chatId);
                 return;
             }

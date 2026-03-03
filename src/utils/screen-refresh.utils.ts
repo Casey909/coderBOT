@@ -8,11 +8,18 @@ import { TextSanitizationUtils } from './text-sanitization.utils.js';
 export class ScreenRefreshUtils {
     /**
      * Create a standard inline keyboard for screen display.
-     * Layout: Refresh button on top, then number buttons.
+     * Layout optimized for Copilot CLI interaction:
+     * Row 1: Refresh
+     * Row 2: Mode switch (Shift+Tab), ESC, Ctrl+C
+     * Row 3: Number selection buttons (1, 2, 3)
      */
     static createScreenKeyboard(): InlineKeyboard {
         return new InlineKeyboard()
             .text('🔄 Refresh', 'refresh_screen')
+            .row()
+            .text('🔀 Mode', 'key_shifttab')
+            .text('ESC', 'key_esc')
+            .text('⌃C', 'key_ctrlc')
             .row()
             .text('1', 'num_1')
             .text('2', 'num_2')
