@@ -41,6 +41,8 @@ export class CoderBot {
     private confirmNotificationDebounceTimers: Map<string, NodeJS.Timeout> = new Map();
     private registeredCustomCoders: Set<string> = new Set();
     private mdFileCache: Map<string, string[]> = new Map(); // userId -> file paths
+    private projectDirCache: Map<string, string[]> = new Map(); // userId -> project dirs
+    private selectedProjectDirs: Map<string, string> = new Map(); // userId -> selected project dir
 
     constructor(
         botId: string,
@@ -91,6 +93,10 @@ export class CoderBot {
         bot.command('killbot', AccessControlMiddleware.requireAccess, this.handleKillbot.bind(this));
         bot.command('macros', AccessControlMiddleware.requireAccess, this.handleMacros.bind(this));
         bot.command('md', AccessControlMiddleware.requireAccess, this.handleMd.bind(this));
+        bot.command('projects', AccessControlMiddleware.requireAccess, this.handleProjects.bind(this));
+        bot.command('project', AccessControlMiddleware.requireAccess, this.handleProject.bind(this));
+        bot.command('mkproject', AccessControlMiddleware.requireAccess, this.handleMkproject.bind(this));
+        bot.command('cp', AccessControlMiddleware.requireAccess, this.handleCopilotSlashShortcut.bind(this));
         bot.on('callback_query:data', AccessControlMiddleware.requireAccess, this.handleCallbackQuery.bind(this));
         bot.on('message:photo', AccessControlMiddleware.requireAccess, this.handlePhoto.bind(this));
         bot.on('message:video', AccessControlMiddleware.requireAccess, this.handleVideo.bind(this));
@@ -359,6 +365,37 @@ export class CoderBot {
                     }
                     this.mdFileCache.delete(userId);
                 }
+                return;
+            }
+
+            // Handle project folder selection
+            if (callbackData.startsWith('project_select:')) {
+                const dirData = callbackData.substring('project_select:'.length);
+                if (dirData === 'cancel') {
+                    await this.safeAnswerCallbackQuery(ctx, '❌ Cancelled');
+                    if (ctx.callbackQuery?.message) {
+                        await ctx.deleteMessage();
+                    }
+                    this.projectDirCache.delete(userId);
+                    return;
+                }
+
+                const dirIndex = parseInt(dirData, 10);
+                const cachedDirs = this.projectDirCache.get(userId);
+                if (!cachedDirs || Number.isNaN(dirIndex) || dirIndex < 0 || dirIndex >= cachedDirs.length) {
+                    await this.safeAnswerCallbackQuery(ctx, '❌ Folder not found');
+                    return;
+                }
+
+                const selectedDir = cachedDirs[dirIndex];
+                this.selectedProjectDirs.set(userId, selectedDir);
+                this.projectDirCache.delete(userId);
+
+                if (ctx.callbackQuery?.message) {
+                    await ctx.deleteMessage();
+                }
+                await ctx.reply(`✅ Project folder selected:\n\`${selectedDir}\``, { parse_mode: 'Markdown' });
+                await this.safeAnswerCallbackQuery(ctx, '✅ Project folder selected');
                 return;
             }
 
@@ -764,7 +801,8 @@ export class CoderBot {
                 chatId,
                 dataHandler,
                 undefined, // onBufferingEndedCallback
-                this.xtermService.getSessionOutputBuffer.bind(this.xtermService) // getFullBufferCallback
+                this.xtermService.getSessionOutputBuffer.bind(this.xtermService), // getFullBufferCallback
+                this.getSelectedProjectDir(userId)
             );
 
             // Update command menu to show /close instead of AI assistants
@@ -777,7 +815,8 @@ export class CoderBot {
             let command: string;
             if (assistantType === AssistantType.COPILOT) {
                 const args = this.configService.getCopilotArguments().trim();
-                command = args ? `copilot ${args}` : 'copilot';
+                const executable = this.configService.getCopilotExecutablePath().trim() || 'copilot';
+                command = args ? `${executable} ${args}` : executable;
             } else if (assistantType === AssistantType.GEMINI) {
                 const args = this.configService.getGeminiArguments().trim();
                 command = args ? `gemini ${args}` : 'gemini';
@@ -863,7 +902,7 @@ export class CoderBot {
         const reserved = [
             'copilot', 'opencode', 'gemini',
             'start', 'help', 'esc', 'close', 'killbot', 'urls', 'startup',
-            'addcoder', 'removecoder'
+            'addcoder', 'removecoder', 'projects', 'project', 'mkproject', 'cp'
         ];
         return reserved.includes(name.toLowerCase());
     }
@@ -1144,18 +1183,21 @@ export class CoderBot {
         const sentMsg = await ctx.reply(
             '🤖 *Welcome to coderBOT!*\n\n' +
             'Your AI-powered terminal assistant optimized for GitHub Copilot CLI.\n\n' +
-            '*Quick Start:*\n' +
-            '/copilot - Start GitHub Copilot CLI\n' +
-            '/xterm - Start raw terminal\n' +
-            '/help - Show all available commands\n\n' +
+             '*Quick Start:*\n' +
+             '/copilot - Start GitHub Copilot CLI\n' +
+             '/projects - Choose project folder\n' +
+             '/mkproject <name> - Create project folder\n' +
+             '/xterm - Start raw terminal\n' +
+             '/help - Show all available commands\n\n' +
             '*Copilot CLI Modes:*\n' +
             '• *Suggest* - Agent pauses for your approval\n' +
             '• *Autopilot* - Agent works until task is complete\n' +
             'Use /mode or the 🔀 Mode button to switch modes.\n\n' +
             '*Pro Tips:*\n' +
             '• Launch with `--experimental` for autopilot mode\n' +
-            '• Use `/model` inside Copilot to switch AI models\n' +
-            '• Send any text to interact with the terminal\n\n' +
+             '• Use `/model` inside Copilot to switch AI models\n' +
+             '• Use /cp <command> to send Copilot slash commands quickly\n' +
+             '• Send any text to interact with the terminal\n\n' +
             'Happy coding! 🚀',
             { parse_mode: 'Markdown' }
         );
@@ -1166,9 +1208,12 @@ export class CoderBot {
     private async handleHelp(ctx: Context): Promise<void> {
         const sentMsg = await ctx.reply(
             '🤖 *CoderBOT - Command Reference*\n\n' +
-            '*Starting Sessions:*\n' +
-            '/copilot - Start GitHub Copilot CLI session\n' +
-            '/xterm - Start raw terminal (no AI)\n\n' +
+             '*Starting Sessions:*\n' +
+             '/copilot - Start GitHub Copilot CLI session\n' +
+             '/projects - Choose a project folder under configured base dir\n' +
+             '/project <folder> - Set project folder directly\n' +
+             '/mkproject <folder> - Create and select folder in base dir\n' +
+             '/xterm - Start raw terminal (no AI)\n\n' +
             '*Copilot CLI Modes (Shift+Tab to cycle):*\n' +
             '• *Suggest* - Agent pauses for your approval\n' +
             '• *Autopilot* - Agent continues until task is done\n' +
@@ -1181,9 +1226,10 @@ export class CoderBot {
             '• `./feedback` - Submit feedback\n' +
             '• `./lsp` - Check LSP server status\n\n' +
             '*Session Management:*\n' +
-            '/startup \\[prompt\\] - Set/view auto-startup for current coder\n' +
-            '/startup delete - Remove startup prompt\n' +
-            '/close - Close the current terminal session\n\n' +
+             '/startup \\[prompt\\] - Set/view auto-startup for current coder\n' +
+             '/startup delete - Remove startup prompt\n' +
+             '/cp <command> - Send Copilot slash command (example: /cp model)\n' +
+             '/close - Close the current terminal session\n\n' +
             '*Sending Input to Terminal:*\n' +
             'Type any message (not starting with /) - Sent to terminal with Enter\n' +
             '.command - Prefix with dot to send / commands as text\n' +
@@ -1341,6 +1387,177 @@ export class CoderBot {
             );
 
             await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 3);
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage(ErrorActions.SEND_TO_TERMINAL, error));
+        }
+    }
+
+    private getCopilotProjectBaseDir(): string {
+        const configuredBaseDir = this.configService.getCopilotProjectBaseDir().trim();
+        if (!configuredBaseDir) {
+            return this.configService.getHomeDirectory();
+        }
+        return path.resolve(configuredBaseDir);
+    }
+
+    private getSelectedProjectDir(userId: string): string {
+        return this.selectedProjectDirs.get(userId) || this.getCopilotProjectBaseDir();
+    }
+
+    private resolveProjectDirectory(inputPath: string): string {
+        const baseDir = this.getCopilotProjectBaseDir();
+        const trimmed = inputPath.trim();
+        if (!trimmed) {
+            throw new Error('Project folder cannot be empty');
+        }
+
+        if (path.isAbsolute(trimmed)) {
+            throw new Error('Please provide a folder path relative to the configured base directory');
+        }
+
+        const resolved = path.resolve(baseDir, trimmed);
+        const relative = path.relative(baseDir, resolved);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+            throw new Error('Project folder must stay inside the configured base directory');
+        }
+        return resolved;
+    }
+
+    private shellQuote(value: string): string {
+        return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+    }
+
+    private async handleProjects(ctx: Context): Promise<void> {
+        try {
+            const userId = ctx.from!.id.toString();
+            const baseDir = this.getCopilotProjectBaseDir();
+            const entries = await fs.promises.readdir(baseDir, { withFileTypes: true });
+            const directories = entries
+                .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
+                .map(entry => path.join(baseDir, entry.name))
+                .sort((a, b) => a.localeCompare(b))
+                .slice(0, 20);
+
+            if (directories.length === 0) {
+                await ctx.reply(
+                    `📁 No project folders found in:\n\`${baseDir}\`\n\nUse \`/mkproject <name>\` to create one.`,
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+
+            this.projectDirCache.set(userId, directories);
+            const keyboard = new InlineKeyboard();
+            directories.forEach((projectDir, index) => {
+                const displayName = path.basename(projectDir);
+                const escaped = TextSanitizationUtils.escapeMarkdown(displayName);
+                keyboard.text(escaped, `project_select:${index}`).row();
+            });
+            keyboard.text('❌ Cancel', 'project_select:cancel');
+
+            await ctx.reply(
+                `📁 *Select Project Folder*\n\nBase: \`${baseDir}\`\nCurrent: \`${this.getSelectedProjectDir(userId)}\``,
+                { parse_mode: 'Markdown', reply_markup: keyboard }
+            );
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage('list project folders', error));
+        }
+    }
+
+    private async handleProject(ctx: Context): Promise<void> {
+        const userId = ctx.from!.id.toString();
+        const chatId = ctx.chat!.id;
+        const message = ctx.message?.text || '';
+        const arg = message.replace('/project', '').trim();
+
+        if (!arg) {
+            await ctx.reply(
+                `📁 *Project Folder Settings*\n\n` +
+                `Base directory: \`${this.getCopilotProjectBaseDir()}\`\n` +
+                `Selected folder: \`${this.getSelectedProjectDir(userId)}\`\n\n` +
+                `Use \`/projects\` to choose, or \`/project <folder>\` to set directly.`,
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        try {
+            const resolvedDir = this.resolveProjectDirectory(arg);
+            const stat = await fs.promises.stat(resolvedDir);
+            if (!stat.isDirectory()) {
+                await ctx.reply('❌ The selected path is not a directory.');
+                return;
+            }
+
+            this.selectedProjectDirs.set(userId, resolvedDir);
+            await ctx.reply(`✅ Project folder set:\n\`${resolvedDir}\``, { parse_mode: 'Markdown' });
+
+            if (this.xtermService.hasSession(userId)) {
+                this.xtermService.writeToSession(userId, `cd ${this.shellQuote(resolvedDir)}`);
+                this.triggerAutoRefresh(userId, chatId);
+            }
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage('set project folder', error));
+        }
+    }
+
+    private async handleMkproject(ctx: Context): Promise<void> {
+        const userId = ctx.from!.id.toString();
+        const chatId = ctx.chat!.id;
+        const message = ctx.message?.text || '';
+        const arg = message.replace('/mkproject', '').trim();
+
+        if (!arg) {
+            await ctx.reply('⚠️ Usage: `/mkproject <folder-name>`', { parse_mode: 'Markdown' });
+            return;
+        }
+
+        try {
+            const projectDir = this.resolveProjectDirectory(arg);
+            await fs.promises.mkdir(projectDir, { recursive: true });
+            this.selectedProjectDirs.set(userId, projectDir);
+
+            await ctx.reply(`✅ Project folder ready:\n\`${projectDir}\``, { parse_mode: 'Markdown' });
+
+            if (this.xtermService.hasSession(userId)) {
+                this.xtermService.writeToSession(userId, `cd ${this.shellQuote(projectDir)}`);
+                this.triggerAutoRefresh(userId, chatId);
+            }
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage('create project folder', error));
+        }
+    }
+
+    private async handleCopilotSlashShortcut(ctx: Context): Promise<void> {
+        const userId = ctx.from!.id.toString();
+        const chatId = ctx.chat!.id;
+        const message = ctx.message?.text || '';
+        const command = message.replace('/cp', '').trim();
+
+        if (!this.xtermService.hasSession(userId)) {
+            await ctx.reply(Messages.NO_ACTIVE_SESSION);
+            return;
+        }
+
+        if (!command) {
+            await ctx.reply(
+                '⚠️ Usage: `/cp <copilot-slash-command>`\n\n' +
+                'Examples:\n' +
+                '`/cp help`\n' +
+                '`/cp model`\n' +
+                '`/cp experimental`\n' +
+                '`/cp cwd`',
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        try {
+            this.xtermService.writeRawToSession(userId, `/${command}`);
+            this.xtermService.writeRawToSession(userId, '\r');
+            const sentMsg = await ctx.reply(`✅ Sent Copilot command: \`/${command}\``, { parse_mode: 'Markdown' });
+            await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 0.5);
+            this.triggerAutoRefresh(userId, chatId);
         } catch (error) {
             await ctx.reply(ErrorUtils.createErrorMessage(ErrorActions.SEND_TO_TERMINAL, error));
         }

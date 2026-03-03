@@ -47,6 +47,8 @@ export class ConfigService {
     private readonly audioTranscriptionDefaultMode: 'copy' | 'prompt';
 
     // AI Assistant Arguments
+    private readonly copilotExecutablePath: string;
+    private readonly copilotProjectBaseDir: string;
     private readonly copilotArguments: string;
     private readonly geminiArguments: string;
     private readonly opencodeArguments: string;
@@ -128,6 +130,8 @@ export class ConfigService {
         this.audioTranscriptionDefaultMode = audioModeValue === 'prompt' ? 'prompt' : 'copy';
 
         // Load AI assistant arguments
+        this.copilotExecutablePath = process.env.COPILOT_EXECUTABLE_PATH?.trim() || 'copilot';
+        this.copilotProjectBaseDir = process.env.COPILOT_PROJECT_BASE_DIR?.trim() || process.env.HOME || '/tmp';
         this.copilotArguments = process.env.COPILOT_ARGUMENTS || '--allow-all-tools --deny-tool \'shell(rmdir)\' --deny-tool \'shell(rm)\' --deny-tool \'shell(sudo)\'';
         this.geminiArguments = process.env.GEMINI_ARGUMENTS || '';
         this.opencodeArguments = process.env.OPENCODE_ARGUMENTS || '';
@@ -264,6 +268,14 @@ export class ConfigService {
     }
 
     // AI Assistant Arguments Getters
+    getCopilotExecutablePath(): string {
+        return this.copilotExecutablePath;
+    }
+
+    getCopilotProjectBaseDir(): string {
+        return this.copilotProjectBaseDir;
+    }
+
     getCopilotArguments(): string {
         return this.copilotArguments;
     }
@@ -330,6 +342,8 @@ export class ConfigService {
   - Airplane Mode: ${this.airplaneMode}
   - TTS Enabled: ${this.hasTtsApiKey()}
   - TTS Provider: ${this.detectTtsProvider() || 'none'}
+  - Copilot Executable: "${this.copilotExecutablePath}"
+  - Copilot Project Base Dir: "${this.copilotProjectBaseDir}"
   - Copilot Arguments: "${this.copilotArguments}"
   - Gemini Arguments: "${this.geminiArguments}"
   - Opencode Arguments: "${this.opencodeArguments}"`;

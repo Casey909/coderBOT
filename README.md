@@ -226,6 +226,14 @@ M7=
 M8=
 M9=
 
+# Copilot CLI Launch Configuration (Optional)
+# Override Copilot executable path (Windows example shown)
+COPILOT_EXECUTABLE_PATH=C:\Tools\copilot\copilot.exe
+# Base directory used by /projects, /project, /mkproject (Windows example shown)
+COPILOT_PROJECT_BASE_DIR=C:\Projects
+# Optional default Copilot CLI arguments
+COPILOT_ARGUMENTS=--allow-all-tools --deny-tool 'shell(rmdir)' --deny-tool 'shell(rm)' --deny-tool 'shell(sudo)'
+
 # Audio Transcription (Optional)
 # Enable voice coding by configuring one of these API keys
 # Option 1: OpenAI Whisper (recommended for high accuracy)
@@ -402,8 +410,9 @@ docker compose down
 - `/copilot` - Start session with GitHub Copilot CLI
 - `/opencode` - Start session with OpenCode
 - `/gemini` - Start session with Gemini CLI
-  - **Optional**: Provide a directory path to cd into before starting the AI assistant
-  - Example: `/copilot /home/user/myproject`
+- `/projects` - Show clickable project folder list from `COPILOT_PROJECT_BASE_DIR`
+- `/project <folder>` - Set project folder relative to `COPILOT_PROJECT_BASE_DIR`
+- `/mkproject <folder>` - Create/select project folder under `COPILOT_PROJECT_BASE_DIR`
 - `/xterm` - Start raw bash terminal session (no AI assistant)
 - `/close` - Close the active terminal session
 - `/help` - Show complete command reference
@@ -417,6 +426,7 @@ docker compose down
 ### Sending Text to Terminal
 - **Regular text messages** - Sent directly to terminal with Enter
 - **`.command`** - Quick command (dot prefix removed, Enter added automatically)
+- `/cp <command>` - Send Copilot slash commands quickly (example: `/cp model`)
 - `/send <text>` - Send text to terminal with Enter
 - `/keys <text>` - Send text without pressing Enter
 - **Tip:** Use `[media]` in your commands - it's replaced with the media directory path

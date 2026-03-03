@@ -7,6 +7,7 @@ import type { BotCommand } from '@grammyjs/types';
 export class CommandMenuUtils {
     private static readonly COMMANDS_NO_SESSION: BotCommand[] = [
         { command: 'copilot', description: 'Start GitHub Copilot CLI session' },
+        { command: 'projects', description: 'Choose project folder for Copilot session' },
         { command: 'xterm', description: 'Start a raw terminal session (no AI)' },
         { command: 'screen', description: 'Capture and view terminal screenshot' },
         { command: 'macros', description: 'Show configured message placeholders (m0-m9)' },
@@ -18,6 +19,7 @@ export class CommandMenuUtils {
     private static readonly COMMANDS_WITH_SESSION: BotCommand[] = [
         { command: 'screen', description: 'Capture and view terminal screenshot' },
         { command: 'mode', description: 'Switch Copilot mode (Suggest/Autopilot)' },
+        { command: 'cp', description: 'Send Copilot slash command (example: /cp model)' },
         { command: 'esc', description: 'Send Escape key' },
         { command: 'close', description: 'Close the current terminal session' },
         { command: 'macros', description: 'Show configured message placeholders (m0-m9)' },
