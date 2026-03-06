@@ -138,7 +138,7 @@ export class ConfigService {
 
         // Load Copilot CLI configuration
         this.copilotExecutablePath = process.env.COPILOT_EXECUTABLE_PATH || 'copilot';
-        this.copilotProjectBaseDir = process.env.COPILOT_PROJECT_BASE_DIR || process.env.HOME || '/tmp';
+        this.copilotProjectBaseDir = process.env.COPILOT_PROJECT_BASE_DIR || process.env.HOME || process.cwd();
 
         // Load message placeholders (M0-M9)
         this.mPlaceholders = new Map();

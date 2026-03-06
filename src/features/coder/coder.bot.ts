@@ -43,6 +43,22 @@ export class CoderBot {
     private mdFileCache: Map<string, string[]> = new Map(); // userId -> file paths
     private userSelectedProject: Map<string, string> = new Map(); // userId -> selected project path
 
+    /**
+     * Validate that a resolved project path is safely within the base directory.
+     * Returns the resolved path if valid, or null if it escapes the base directory.
+     */
+    private resolveProjectPath(folderName: string): { projectPath: string; baseDir: string } | null {
+        const baseDir = path.resolve(this.configService.getCopilotProjectBaseDir());
+        const projectPath = path.resolve(baseDir, folderName);
+
+        // Prevent directory traversal: ensure resolved path is within base dir
+        if (!projectPath.startsWith(baseDir + path.sep) && projectPath !== baseDir) {
+            return null;
+        }
+
+        return { projectPath, baseDir };
+    }
+
     constructor(
         botId: string,
         botToken: string,
@@ -369,8 +385,14 @@ export class CoderBot {
             // Handle project folder selection from /projects inline keyboard
             if (callbackData.startsWith('project:')) {
                 const folderName = callbackData.substring(8);
-                const baseDir = this.configService.getCopilotProjectBaseDir();
-                const projectPath = path.join(baseDir, folderName);
+                const resolved = this.resolveProjectPath(folderName);
+
+                if (!resolved) {
+                    await this.safeAnswerCallbackQuery(ctx, '❌ Invalid folder');
+                    return;
+                }
+
+                const { projectPath, baseDir } = resolved;
 
                 if (!fs.existsSync(projectPath)) {
                     await this.safeAnswerCallbackQuery(ctx, `❌ Folder not found: ${folderName}`);
@@ -392,7 +414,7 @@ export class CoderBot {
                         const keyboard = new InlineKeyboard();
                         for (let i = 0; i < folders.length; i++) {
                             const folder = folders[i];
-                            const isSelected = projectPath === path.join(baseDir, folder);
+                            const isSelected = projectPath === path.resolve(baseDir, folder);
                             const label = isSelected ? `✅ ${folder}` : `📁 ${folder}`;
                             keyboard.text(label, `project:${folder}`);
                             if ((i + 1) % 2 === 0) keyboard.row();
@@ -1291,7 +1313,7 @@ export class CoderBot {
 
             for (let i = 0; i < folders.length; i++) {
                 const folder = folders[i];
-                const isSelected = selectedProject === path.join(baseDir, folder);
+                const isSelected = selectedProject === path.resolve(baseDir, folder);
                 const label = isSelected ? `✅ ${folder}` : `📁 ${folder}`;
                 keyboard.text(label, `project:${folder}`);
                 if ((i + 1) % 2 === 0) keyboard.row();
@@ -1342,8 +1364,13 @@ export class CoderBot {
                 return;
             }
 
-            const baseDir = this.configService.getCopilotProjectBaseDir();
-            const projectPath = path.join(baseDir, args);
+            const resolved = this.resolveProjectPath(args);
+            if (!resolved) {
+                await ctx.reply('❌ Invalid folder name.');
+                return;
+            }
+
+            const { projectPath } = resolved;
 
             if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) {
                 await ctx.reply(
@@ -1385,22 +1412,26 @@ export class CoderBot {
                 return;
             }
 
-            // Validate folder name - only allow safe characters
-            if (!/^[a-zA-Z0-9_\-. ]+$/.test(folderName)) {
+            // Validate folder name - only allow safe characters, no dots-only or traversal
+            if (!/^[a-zA-Z0-9][a-zA-Z0-9_\- ]*$/.test(folderName)) {
                 await ctx.reply(
                     '❌ Invalid folder name.\n\n' +
-                    'Use only letters, numbers, hyphens, underscores, dots, and spaces.',
+                    'Must start with a letter or number. Use only letters, numbers, hyphens, underscores, and spaces.',
                 );
                 return;
             }
 
-            const baseDir = this.configService.getCopilotProjectBaseDir();
+            const resolved = this.resolveProjectPath(folderName);
+            if (!resolved) {
+                await ctx.reply('❌ Invalid folder name.');
+                return;
+            }
+
+            const { projectPath, baseDir } = resolved;
 
             if (!fs.existsSync(baseDir)) {
                 fs.mkdirSync(baseDir, { recursive: true });
             }
-
-            const projectPath = path.join(baseDir, folderName);
 
             if (fs.existsSync(projectPath)) {
                 // Folder exists, just select it
@@ -1441,8 +1472,13 @@ export class CoderBot {
 
             // If a project name is provided, select it first
             if (args) {
-                const baseDir = this.configService.getCopilotProjectBaseDir();
-                const projectPath = path.join(baseDir, args);
+                const resolved = this.resolveProjectPath(args);
+                if (!resolved) {
+                    await ctx.reply('❌ Invalid folder name.');
+                    return;
+                }
+
+                const { projectPath } = resolved;
 
                 if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) {
                     await ctx.reply(
