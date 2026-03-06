@@ -30,7 +30,8 @@ export class XtermService {
         chatId: number,
         onDataCallback?: (userId: string, chatId: number, data: string) => void,
         onBufferingEndedCallback?: (userId: string, chatId: number) => void,
-        getFullBufferCallback?: (userId: string) => string[]
+        getFullBufferCallback?: (userId: string) => string[],
+        cwd?: string
     ): void {
         const sessionKey = this.getSessionKey(userId);
         if (this.sessions.has(sessionKey)) {
@@ -38,11 +39,12 @@ export class XtermService {
         }
 
         try {
+            const sessionCwd = cwd || this.configService.getHomeDirectory();
             const ptyProcess = pty.spawn(this.config.shellPath, [], {
                 name: 'xterm-color',
                 cols: this.config.terminalCols,
                 rows: this.config.terminalRows,
-                cwd: this.configService.getHomeDirectory(),
+                cwd: sessionCwd,
                 env: this.configService.getSystemEnv(),
             });
 

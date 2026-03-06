@@ -41,6 +41,23 @@ export class CoderBot {
     private confirmNotificationDebounceTimers: Map<string, NodeJS.Timeout> = new Map();
     private registeredCustomCoders: Set<string> = new Set();
     private mdFileCache: Map<string, string[]> = new Map(); // userId -> file paths
+    private userSelectedProject: Map<string, string> = new Map(); // userId -> selected project path
+
+    /**
+     * Validate that a resolved project path is safely within the base directory.
+     * Returns the resolved path if valid, or null if it escapes the base directory.
+     */
+    private resolveProjectPath(folderName: string): { projectPath: string; baseDir: string } | null {
+        const baseDir = path.resolve(this.configService.getCopilotProjectBaseDir());
+        const projectPath = path.resolve(baseDir, folderName);
+
+        // Prevent directory traversal: ensure resolved path is within base dir
+        if (!projectPath.startsWith(baseDir + path.sep) && projectPath !== baseDir) {
+            return null;
+        }
+
+        return { projectPath, baseDir };
+    }
 
     constructor(
         botId: string,
@@ -90,6 +107,10 @@ export class CoderBot {
         bot.command('killbot', AccessControlMiddleware.requireAccess, this.handleKillbot.bind(this));
         bot.command('macros', AccessControlMiddleware.requireAccess, this.handleMacros.bind(this));
         bot.command('md', AccessControlMiddleware.requireAccess, this.handleMd.bind(this));
+        bot.command('projects', AccessControlMiddleware.requireAccess, this.handleProjects.bind(this));
+        bot.command('project', AccessControlMiddleware.requireAccess, this.handleProject.bind(this));
+        bot.command('mkproject', AccessControlMiddleware.requireAccess, this.handleMkProject.bind(this));
+        bot.command('cp', AccessControlMiddleware.requireAccess, this.handleCp.bind(this));
         bot.on('callback_query:data', AccessControlMiddleware.requireAccess, this.handleCallbackQuery.bind(this));
         bot.on('message:photo', AccessControlMiddleware.requireAccess, this.handlePhoto.bind(this));
         bot.on('message:video', AccessControlMiddleware.requireAccess, this.handleVideo.bind(this));
@@ -357,6 +378,59 @@ export class CoderBot {
                         await ctx.deleteMessage();
                     }
                     this.mdFileCache.delete(userId);
+                }
+                return;
+            }
+
+            // Handle project folder selection from /projects inline keyboard
+            if (callbackData.startsWith('project:')) {
+                const folderName = callbackData.substring(8);
+                const resolved = this.resolveProjectPath(folderName);
+
+                if (!resolved) {
+                    await this.safeAnswerCallbackQuery(ctx, '❌ Invalid folder');
+                    return;
+                }
+
+                const { projectPath, baseDir } = resolved;
+
+                if (!fs.existsSync(projectPath)) {
+                    await this.safeAnswerCallbackQuery(ctx, `❌ Folder not found: ${folderName}`);
+                    return;
+                }
+
+                this.userSelectedProject.set(userId, projectPath);
+                await this.safeAnswerCallbackQuery(ctx, `✅ Selected: ${folderName}`);
+
+                // Update the message to reflect the new selection
+                if (ctx.callbackQuery?.message) {
+                    try {
+                        const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+                        const folders = entries
+                            .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+                            .map(e => e.name)
+                            .sort();
+
+                        const keyboard = new InlineKeyboard();
+                        for (let i = 0; i < folders.length; i++) {
+                            const folder = folders[i];
+                            const isSelected = projectPath === path.resolve(baseDir, folder);
+                            const label = isSelected ? `✅ ${folder}` : `📁 ${folder}`;
+                            keyboard.text(label, `project:${folder}`);
+                            if ((i + 1) % 2 === 0) keyboard.row();
+                        }
+                        if (folders.length % 2 !== 0) keyboard.row();
+
+                        await ctx.editMessageText(
+                            `📂 *Project Folders*\n` +
+                            `Base: \`${baseDir}\`\n` +
+                            `Selected: \`${folderName}\`\n\n` +
+                            'Tap a folder to select it as working directory:',
+                            { parse_mode: 'Markdown', reply_markup: keyboard }
+                        );
+                    } catch (editError) {
+                        console.error('Failed to update project list message:', editError);
+                    }
                 }
                 return;
             }
@@ -739,12 +813,16 @@ export class CoderBot {
             // Set buffer getter so CoderService can access full buffer
             this.coderService.setBufferGetter(this.xtermService.getSessionOutputBuffer.bind(this.xtermService));
 
+            // Determine cwd: use user-selected project dir if available
+            const selectedProject = this.userSelectedProject.get(userId);
+
             this.xtermService.createSession(
                 userId,
                 chatId,
                 dataHandler,
                 undefined, // onBufferingEndedCallback
-                this.xtermService.getSessionOutputBuffer.bind(this.xtermService) // getFullBufferCallback
+                this.xtermService.getSessionOutputBuffer.bind(this.xtermService), // getFullBufferCallback
+                selectedProject // cwd - use selected project or default
             );
 
             // Update command menu to show /close instead of AI assistants
@@ -757,7 +835,8 @@ export class CoderBot {
             let command: string;
             if (assistantType === AssistantType.COPILOT) {
                 const args = this.configService.getCopilotArguments().trim();
-                command = args ? `copilot ${args}` : 'copilot';
+                const execPath = this.configService.getCopilotExecutablePath();
+                command = args ? `${execPath} ${args}` : execPath;
             } else if (assistantType === AssistantType.GEMINI) {
                 const args = this.configService.getGeminiArguments().trim();
                 command = args ? `gemini ${args}` : 'gemini';
@@ -819,7 +898,7 @@ export class CoderBot {
         const reserved = [
             'copilot', 'opencode', 'gemini',
             'start', 'help', 'esc', 'close', 'killbot', 'urls', 'startup',
-            'addcoder', 'removecoder'
+            'addcoder', 'removecoder', 'projects', 'project', 'mkproject', 'cp'
         ];
         return reserved.includes(name.toLowerCase());
     }
@@ -1102,8 +1181,8 @@ export class CoderBot {
             'Your AI-powered terminal assistant is ready to help.\n\n' +
             '*Quick Start:*\n' +
             '/copilot - Start GitHub Copilot CLI\n' +
-            '/opencode - Start OpenCode AI\n' +
-            '/gemini - Start Gemini AI\n' +
+            '/cp <folder> - Quick launch Copilot in a project\n' +
+            '/projects - Browse and select project folder\n' +
             '/xterm - Start raw terminal\n' +
             '/help - Show all available commands\n\n' +
             'Send any message to interact with the terminal.\n\n' +
@@ -1121,7 +1200,13 @@ export class CoderBot {
             '/copilot - Start GitHub Copilot CLI session\n' +
             '/opencode - Start OpenCode AI session\n' +
             '/gemini - Start Gemini AI session\n' +
-            '/xterm - Start raw terminal (no AI)\n\n' +
+            '/xterm - Start raw terminal (no AI)\n' +
+            '/cp <folder> - Quick launch Copilot in a project folder\n\n' +
+            '*Project Management:*\n' +
+            '/projects - Browse and select project folder\n' +
+            '/project <name> - Select project folder by name\n' +
+            '/project - Show current selected project\n' +
+            '/mkproject <name> - Create new project folder\n\n' +
             '*Custom Coders:*\n' +
             '/addcoder <name> - Create custom AI assistant (a-z only)\n' +
             '/removecoder <name> - Remove custom AI assistant\n\n' +
@@ -1188,6 +1273,229 @@ export class CoderBot {
             await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService);
         } catch (error) {
             await ctx.reply(ErrorUtils.createErrorMessage(ErrorActions.SEND_TO_TERMINAL, error));
+        }
+    }
+
+    /**
+     * Handle /projects command - List project folders in the base directory
+     */
+    private async handleProjects(ctx: Context): Promise<void> {
+        try {
+            const userId = ctx.from!.id.toString();
+            const baseDir = this.configService.getCopilotProjectBaseDir();
+
+            if (!fs.existsSync(baseDir)) {
+                await ctx.reply(
+                    `❌ Project base directory does not exist: \`${baseDir}\`\n\n` +
+                    'Set COPILOT\\_PROJECT\\_BASE\\_DIR in your .env file.',
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+
+            const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+            const folders = entries
+                .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+                .map(e => e.name)
+                .sort();
+
+            if (folders.length === 0) {
+                await ctx.reply(
+                    `📂 No project folders found in:\n\`${baseDir}\`\n\n` +
+                    'Use /mkproject <name> to create one.',
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+
+            const selectedProject = this.userSelectedProject.get(userId);
+            const keyboard = new InlineKeyboard();
+
+            for (let i = 0; i < folders.length; i++) {
+                const folder = folders[i];
+                const isSelected = selectedProject === path.resolve(baseDir, folder);
+                const label = isSelected ? `✅ ${folder}` : `📁 ${folder}`;
+                keyboard.text(label, `project:${folder}`);
+                if ((i + 1) % 2 === 0) keyboard.row();
+            }
+            if (folders.length % 2 !== 0) keyboard.row();
+
+            const currentLabel = selectedProject
+                ? `\`${path.basename(selectedProject)}\``
+                : '_default (home)_';
+
+            const sentMsg = await ctx.reply(
+                `📂 *Project Folders*\n` +
+                `Base: \`${baseDir}\`\n` +
+                `Selected: ${currentLabel}\n\n` +
+                'Tap a folder to select it as working directory:',
+                { parse_mode: 'Markdown', reply_markup: keyboard }
+            );
+            await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 4);
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage('list projects', error));
+        }
+    }
+
+    /**
+     * Handle /project command - Select or show current project directory
+     */
+    private async handleProject(ctx: Context): Promise<void> {
+        try {
+            const userId = ctx.from!.id.toString();
+            const message = ctx.message?.text || '';
+            const args = message.replace('/project', '').trim();
+
+            if (!args) {
+                const selectedProject = this.userSelectedProject.get(userId);
+                if (selectedProject) {
+                    await ctx.reply(
+                        `📂 Current project: \`${selectedProject}\`\n\n` +
+                        'Use /project <name> to change, or /projects to browse.',
+                        { parse_mode: 'Markdown' }
+                    );
+                } else {
+                    await ctx.reply(
+                        '📂 No project selected (using default home directory).\n\n' +
+                        'Use /project <name> to select, or /projects to browse.',
+                        { parse_mode: 'Markdown' }
+                    );
+                }
+                return;
+            }
+
+            const resolved = this.resolveProjectPath(args);
+            if (!resolved) {
+                await ctx.reply('❌ Invalid folder name.');
+                return;
+            }
+
+            const { projectPath } = resolved;
+
+            if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) {
+                await ctx.reply(
+                    `❌ Folder not found: \`${args}\`\n\n` +
+                    'Use /projects to list available folders, or /mkproject <name> to create one.',
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+
+            this.userSelectedProject.set(userId, projectPath);
+            const sentMsg = await ctx.reply(
+                `✅ Project set to: \`${args}\`\n` +
+                `Path: \`${projectPath}\`\n\n` +
+                'Next /copilot or /xterm session will start in this directory.',
+                { parse_mode: 'Markdown' }
+            );
+            await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 3);
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage('select project', error));
+        }
+    }
+
+    /**
+     * Handle /mkproject command - Create a new project folder
+     */
+    private async handleMkProject(ctx: Context): Promise<void> {
+        try {
+            const userId = ctx.from!.id.toString();
+            const message = ctx.message?.text || '';
+            const folderName = message.replace('/mkproject', '').trim();
+
+            if (!folderName) {
+                await ctx.reply(
+                    '❌ Usage: `/mkproject <folder-name>`\n\n' +
+                    'Creates a new folder in the project base directory.',
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+
+            // Validate folder name - only allow safe characters, no dots-only or traversal
+            if (!/^[a-zA-Z0-9][a-zA-Z0-9_\- ]*$/.test(folderName)) {
+                await ctx.reply(
+                    '❌ Invalid folder name.\n\n' +
+                    'Must start with a letter or number. Use only letters, numbers, hyphens, underscores, and spaces.',
+                );
+                return;
+            }
+
+            const resolved = this.resolveProjectPath(folderName);
+            if (!resolved) {
+                await ctx.reply('❌ Invalid folder name.');
+                return;
+            }
+
+            const { projectPath, baseDir } = resolved;
+
+            if (!fs.existsSync(baseDir)) {
+                fs.mkdirSync(baseDir, { recursive: true });
+            }
+
+            if (fs.existsSync(projectPath)) {
+                // Folder exists, just select it
+                this.userSelectedProject.set(userId, projectPath);
+                const sentMsg = await ctx.reply(
+                    `📂 Folder already exists: \`${folderName}\`\n` +
+                    `Selected as current project.\n\n` +
+                    'Use /copilot to start a session in this folder.',
+                    { parse_mode: 'Markdown' }
+                );
+                await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 3);
+                return;
+            }
+
+            fs.mkdirSync(projectPath, { recursive: true });
+            this.userSelectedProject.set(userId, projectPath);
+
+            const sentMsg = await ctx.reply(
+                `✅ Created and selected: \`${folderName}\`\n` +
+                `Path: \`${projectPath}\`\n\n` +
+                'Use /copilot to start a session in this folder.',
+                { parse_mode: 'Markdown' }
+            );
+            await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 3);
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage('create project folder', error));
+        }
+    }
+
+    /**
+     * Handle /cp command - Quick launch Copilot in selected/specified project
+     */
+    private async handleCp(ctx: Context): Promise<void> {
+        try {
+            const userId = ctx.from!.id.toString();
+            const message = ctx.message?.text || '';
+            const args = message.replace('/cp', '').trim();
+
+            // If a project name is provided, select it first
+            if (args) {
+                const resolved = this.resolveProjectPath(args);
+                if (!resolved) {
+                    await ctx.reply('❌ Invalid folder name.');
+                    return;
+                }
+
+                const { projectPath } = resolved;
+
+                if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) {
+                    await ctx.reply(
+                        `❌ Folder not found: \`${args}\`\n\n` +
+                        'Use /projects to list available folders, or /mkproject <name> to create one.',
+                        { parse_mode: 'Markdown' }
+                    );
+                    return;
+                }
+
+                this.userSelectedProject.set(userId, projectPath);
+            }
+
+            // Launch copilot
+            await this.handleAIAssistant(ctx, AssistantType.COPILOT);
+        } catch (error) {
+            await ctx.reply(ErrorUtils.createErrorMessage('quick launch copilot', error));
         }
     }
 
