@@ -51,6 +51,10 @@ export class ConfigService {
     private readonly geminiArguments: string;
     private readonly opencodeArguments: string;
 
+    // Copilot CLI Configuration
+    private readonly copilotExecutablePath: string;
+    private readonly copilotProjectBaseDir: string;
+
     // Message Placeholders
     private readonly mPlaceholders: Map<number, string>;
 
@@ -131,6 +135,10 @@ export class ConfigService {
         this.copilotArguments = process.env.COPILOT_ARGUMENTS || '--allow-all-tools --deny-tool \'shell(rmdir)\' --deny-tool \'shell(rm)\' --deny-tool \'shell(sudo)\'';
         this.geminiArguments = process.env.GEMINI_ARGUMENTS || '';
         this.opencodeArguments = process.env.OPENCODE_ARGUMENTS || '';
+
+        // Load Copilot CLI configuration
+        this.copilotExecutablePath = process.env.COPILOT_EXECUTABLE_PATH || 'copilot';
+        this.copilotProjectBaseDir = process.env.COPILOT_PROJECT_BASE_DIR || process.env.HOME || '/tmp';
 
         // Load message placeholders (M0-M9)
         this.mPlaceholders = new Map();
@@ -276,6 +284,15 @@ export class ConfigService {
         return this.opencodeArguments;
     }
 
+    // Copilot CLI Configuration Getters
+    getCopilotExecutablePath(): string {
+        return this.copilotExecutablePath;
+    }
+
+    getCopilotProjectBaseDir(): string {
+        return this.copilotProjectBaseDir;
+    }
+
     // Message Placeholder Getters
     getMPlaceholder(index: number): string | undefined {
         return this.mPlaceholders.get(index);
@@ -331,6 +348,8 @@ export class ConfigService {
   - TTS Enabled: ${this.hasTtsApiKey()}
   - TTS Provider: ${this.detectTtsProvider() || 'none'}
   - Copilot Arguments: "${this.copilotArguments}"
+  - Copilot Executable: "${this.copilotExecutablePath}"
+  - Copilot Project Base Dir: "${this.copilotProjectBaseDir}"
   - Gemini Arguments: "${this.geminiArguments}"
   - Opencode Arguments: "${this.opencodeArguments}"`;
     }

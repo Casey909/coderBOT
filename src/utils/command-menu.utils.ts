@@ -7,6 +7,8 @@ import type { BotCommand } from '@grammyjs/types';
 export class CommandMenuUtils {
     private static readonly COMMANDS_NO_SESSION: BotCommand[] = [
         { command: 'copilot', description: 'Start a new terminal session with Copilot' },
+        { command: 'cp', description: 'Quick launch Copilot in a project folder' },
+        { command: 'projects', description: 'Browse and select project folder' },
         { command: 'opencode', description: 'Start a new terminal session with OpenCode' },
         { command: 'gemini', description: 'Start a new terminal session with Gemini' },
         { command: 'xterm', description: 'Start a raw terminal session (no AI)' },

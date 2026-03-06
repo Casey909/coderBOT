@@ -138,6 +138,25 @@ GEMINI_ARGUMENTS=
 # Arguments to pass to the opencode command when starting a session
 OPENCODE_ARGUMENTS=
 
+# ============================================================================
+# Copilot CLI Configuration (Optional)
+# ============================================================================
+
+# Path to the Copilot CLI executable
+# Use this if copilot is not in your system PATH
+# Example (Windows): COPILOT_EXECUTABLE_PATH=C:\Tools\copilot\copilot.exe
+# Example (Linux/Mac): COPILOT_EXECUTABLE_PATH=/usr/local/bin/copilot
+# Default: copilot (uses system PATH)
+COPILOT_EXECUTABLE_PATH=copilot
+
+# Base directory for project folders
+# Used by /projects, /project, /mkproject, and /cp commands
+# to browse, select, and create project folders
+# Example (Windows): COPILOT_PROJECT_BASE_DIR=C:\Projects
+# Example (Linux/Mac): COPILOT_PROJECT_BASE_DIR=/home/user/projects
+# Default: $HOME
+COPILOT_PROJECT_BASE_DIR=
+
 #
 # CUSTOM ENV - not specific to coderBOT
 # Place here your custom environment variables if needed

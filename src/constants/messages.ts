@@ -57,6 +57,10 @@ export const ErrorActions = {
     CAPTURE_SCREEN: 'capture terminal screen',
     CREATE_TERMINAL: 'create terminal session',
     TRANSCRIBE_AUDIO: 'transcribe audio',
+    LIST_PROJECTS: 'list projects',
+    SELECT_PROJECT: 'select project',
+    CREATE_PROJECT: 'create project folder',
+    QUICK_LAUNCH_COPILOT: 'quick launch copilot',
 } as const;
 
 /**
