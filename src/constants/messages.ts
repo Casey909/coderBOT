@@ -3,7 +3,7 @@
  */
 export const Messages = {
     // Session-related messages
-    NO_ACTIVE_SESSION: '❌ No active session.\n\nUse /start to create one.',
+    NO_ACTIVE_SESSION: '❌ No active session.\n\nUse /copilot to start one.',
     SESSION_ALREADY_EXISTS: '⚠️ You already have an active terminal session.\n\n' +
         'Use /close to terminate it first, or continue using it.',
 
@@ -11,7 +11,7 @@ export const Messages = {
     VIEW_SCREEN_HINT: 'Use /screen to view the output.',
 
     // Session close messages
-    NO_SESSION_TO_CLOSE: '⚠️ No active terminal session to close.\n\nUse /start to start one.',
+    NO_SESSION_TO_CLOSE: '⚠️ No active session to close.\n\nUse /copilot to start one.',
 
     // Callback query errors
     INVALID_CALLBACK: '❌ Invalid callback',
@@ -51,6 +51,11 @@ export const ErrorActions = {
     SEND_DELETE: 'send Delete key',
     SEND_CTRL_C: 'send Ctrl+C',
     SEND_CTRL_X: 'send Ctrl+X',
+    SEND_CTRL_Y: 'send Ctrl+Y',
+    SEND_CTRL_N: 'send Ctrl+N',
+    SEND_CTRL_T: 'send Ctrl+T',
+    SEND_CTRL_L: 'send Ctrl+L',
+    SEND_SHIFT_TAB: 'send Shift+Tab',
     SEND_ESCAPE: 'send Escape key',
     SEND_CONTROL_CHARACTER: 'send control character',
     SEND_KEYS: 'send keys',

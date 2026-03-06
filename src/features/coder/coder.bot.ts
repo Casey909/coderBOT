@@ -14,6 +14,7 @@ import { CommandMenuUtils } from '../../utils/command-menu.utils.js';
 import { TextSanitizationUtils } from '../../utils/text-sanitization.utils.js';
 import { buildTelegramFileUrl } from '../../utils/url-validation.utils.js';
 import { Messages, SuccessMessages, ErrorActions } from '../../constants/messages.js';
+import { COPILOT_KEY_MAP, SLASH_COMMAND_DELAY_MS } from '../../constants/copilot-keys.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
@@ -445,6 +446,39 @@ export class CoderBot {
                 const number = callbackData === 'num_1' ? '1' : callbackData === 'num_2' ? '2' : '3';
                 this.xtermService.writeRawToSession(userId, number);
                 await this.safeAnswerCallbackQuery(ctx, SuccessMessages.SENT(number));
+                this.triggerAutoRefresh(userId, chatId);
+                return;
+            }
+
+            // Handle special key buttons from inline keyboard (esc, shifttab, ctrly, ctrln, etc.)
+            if (callbackData.startsWith('key_')) {
+                if (!this.xtermService.hasSession(userId)) {
+                    await this.safeAnswerCallbackQuery(ctx, Messages.NO_ACTIVE_TERMINAL_SESSION);
+                    return;
+                }
+
+                const keyName = callbackData.substring(4);
+                const keyConfig = COPILOT_KEY_MAP[keyName];
+                if (keyConfig) {
+                    this.xtermService.writeRawToSession(userId, keyConfig.sequence);
+                    await this.safeAnswerCallbackQuery(ctx, `✅ Sent: ${keyConfig.display}`);
+                    this.triggerAutoRefresh(userId, chatId);
+                    return;
+                }
+            }
+
+            // Handle Copilot slash command buttons
+            if (callbackData.startsWith('cpslash_')) {
+                if (!this.xtermService.hasSession(userId)) {
+                    await this.safeAnswerCallbackQuery(ctx, Messages.NO_ACTIVE_TERMINAL_SESSION);
+                    return;
+                }
+
+                const slashCmd = callbackData.substring(8);
+                this.xtermService.writeRawToSession(userId, `/${slashCmd}`);
+                await new Promise(resolve => setTimeout(resolve, SLASH_COMMAND_DELAY_MS));
+                this.xtermService.writeRawToSession(userId, '\r');
+                await this.safeAnswerCallbackQuery(ctx, `✅ Sent: /${slashCmd}`);
                 this.triggerAutoRefresh(userId, chatId);
                 return;
             }
@@ -1084,7 +1118,7 @@ export class CoderBot {
             if (!this.xtermService.hasSession(userId)) {
                 await ctx.reply(
                     '❌ No active session.\n\n' +
-                    'Please start a coder first with /copilot, /opencode, /gemini, or your custom coder.',
+                    'Start a session first with /copilot or /cp <folder>.',
                     { parse_mode: 'Markdown' }
                 );
                 return;
@@ -1164,9 +1198,9 @@ export class CoderBot {
             }
 
             const sentMsg = await ctx.reply(
-                '✅ *Coder Session Closed*\n\n' +
-                'The coder session has been terminated.\n\n' +
-                'Use /copilot, /opencode, or /gemini to start a new session.',
+                '✅ *Session Closed*\n\n' +
+                'Use /copilot to start a new Copilot CLI session.\n' +
+                'Use /cp <folder> for quick launch in a project.',
                 { parse_mode: 'Markdown' }
             );
             await MessageUtils.scheduleMessageDeletion(ctx, sentMsg.message_id, this.configService, 3);
@@ -1178,14 +1212,18 @@ export class CoderBot {
     private async handleStart(ctx: Context): Promise<void> {
         const sentMsg = await ctx.reply(
             '🤖 *Welcome to coderBOT!*\n\n' +
-            'Your AI-powered terminal assistant is ready to help.\n\n' +
+            'Your remote Copilot CLI terminal assistant.\n\n' +
             '*Quick Start:*\n' +
-            '/copilot - Start GitHub Copilot CLI\n' +
+            '/copilot - Launch GitHub Copilot CLI\n' +
             '/cp <folder> - Quick launch Copilot in a project\n' +
             '/projects - Browse and select project folder\n' +
             '/xterm - Start raw terminal\n' +
-            '/help - Show all available commands\n\n' +
-            'Send any message to interact with the terminal.\n\n' +
+            '/help - Show all commands\n\n' +
+            '*Copilot Inline Buttons:*\n' +
+            '⇥ Mode - Shift+Tab to cycle Suggest/Plan/Autopilot\n' +
+            '✅ Yes - Accept suggestion (Ctrl+Y)\n' +
+            '❌ No - Reject suggestion (Ctrl+N)\n\n' +
+            'Send any message to interact with Copilot CLI.\n\n' +
             'Happy coding! 🚀',
             { parse_mode: 'Markdown' }
         );
@@ -1197,61 +1235,60 @@ export class CoderBot {
         const sentMsg = await ctx.reply(
             '🤖 *CoderBOT - Complete Command Reference*\n\n' +
             '*Starting Sessions:*\n' +
-            '/copilot - Start GitHub Copilot CLI session\n' +
-            '/opencode - Start OpenCode AI session\n' +
-            '/gemini - Start Gemini AI session\n' +
+            '/copilot - Launch GitHub Copilot CLI\n' +
+            '/cp <folder> - Quick launch Copilot in a project folder\n' +
             '/xterm - Start raw terminal (no AI)\n' +
-            '/cp <folder> - Quick launch Copilot in a project folder\n\n' +
+            '/opencode - Start OpenCode AI session\n' +
+            '/gemini - Start Gemini AI session\n\n' +
+            '*Copilot CLI Controls:*\n' +
+            '/shifttab - Switch mode (Suggest → Plan → Autopilot)\n' +
+            '/ctrly - Accept / confirm (Ctrl+Y)\n' +
+            '/ctrln - Reject / decline (Ctrl+N)\n' +
+            '/ctrlt - Toggle reasoning visibility (Ctrl+T)\n' +
+            '/ctrll - Clear terminal screen (Ctrl+L)\n\n' +
+            '*Copilot Slash Commands* (prefix with `.` in chat):\n' +
+            '`.`/model - Switch AI model\n' +
+            '`.`/compact - Compress conversation context\n' +
+            '`.`/diff - Review code changes\n' +
+            '`.`/plan - Toggle plan mode\n' +
+            '`.`/resume - Resume previous session\n' +
+            '`.`/clear - Clear conversation history\n' +
+            '`.`/bug - Flag a bug for troubleshooting\n' +
+            '`.`/session - Show session stats\n' +
+            '`.`/help - Show Copilot commands\n' +
+            '_Or tap buttons on screenshots for /compact, /diff, /model_\n\n' +
             '*Project Management:*\n' +
             '/projects - Browse and select project folder\n' +
             '/project <name> - Select project folder by name\n' +
-            '/project - Show current selected project\n' +
             '/mkproject <name> - Create new project folder\n\n' +
-            '*Custom Coders:*\n' +
-            '/addcoder <name> - Create custom AI assistant (a-z only)\n' +
-            '/removecoder <name> - Remove custom AI assistant\n\n' +
             '*Session Management:*\n' +
-            '/startup [prompt] - Set/view auto-startup for current coder\n' +
+            '/startup \\[prompt\\] - Set/view auto-startup prompt\n' +
             '/startup delete - Remove startup prompt\n' +
-            '/close - Close the current terminal session\n\n' +
-            '*Sending Commands to Terminal:*\n' +
-            'Type any message (not starting with /) - Sent directly to terminal with Enter\n' +
-            '.prompt or command - Place a dot to send / commands or literal prompts.\n' +
+            '/close - Close the current session\n\n' +
+            '*Sending to Terminal:*\n' +
+            'Type any message - Sent directly with Enter\n' +
+            '.prompt - Prefix with dot to send / commands literally\n' +
             '/keys <text> - Send text without Enter\n\n' +
-            '*Tip:* Use \\[media\] in your text - it will be replaced with the media directory path\n\n' +
             '*Special Keys:*\n' +
-            '/tab - Send Tab character\n' +
-            '/enter - Send Enter key\n' +
-            '/space - Send Space character\n' +
-            '/esc - Send Escape key\n' +
-            '/delete - Send Delete/Backspace key\n' +
-            '/ctrlc - Send Ctrl+C (interrupt)\n' +
-            '/ctrlx - Send Ctrl+X\n' +
-            '/ctrl <char> - Send any Ctrl+ combination (a-z, @, \\[, \\\\, \\], ^, \\_, ?)\n' +
-            '/arrowup - Send Arrow Up key\n' +
-            '/arrowdown - Send Arrow Down key\n' +
-            '/1, /2, /3, /4, /5 - Send number keys\n\n' +
+            '/tab - Tab | /enter - Enter | /space - Space\n' +
+            '/esc - Escape | /delete - Backspace\n' +
+            '/ctrlc - Interrupt | /ctrlx - Ctrl+X\n' +
+            '/ctrl <char> - Any Ctrl+key\n' +
+            '/arrowup /arrowdown - Arrow keys\n' +
+            '/1, /2, /3, /4, /5 - Number keys\n\n' +
             '*Viewing Output:*\n' +
-            '/screen - Capture and view terminal screenshot\n' +
-            '/airplane [on|off] - Toggle/check airplane mode (text vs images)\n' +
-            '/md - Show 5 most recently updated markdown files\n' +
-            'Click 🔄 Refresh button on screenshots to update\n\n' +
-            '*Media Upload & Download:*\n' +
-            '• *Supported Upload Types:*\n' +
-            '  - 📷 Photos (JPG, PNG, WebP, etc.)\n' +
-            '  - 🎥 Videos (MP4, MOV, AVI, etc.)\n' +
-            '  - 🎵 Audio files (MP3, WAV, AAC, etc.)\n' +
-            '  - 🎤 Voice messages (OGG, etc.)\n' +
-            '• Uploaded media is automatically saved to the received directory\n' +
-            '• Files copied to \\[media\\] directory will be sent to you automatically\n' +
-            '• Use \\[media\] in commands - e.g., "cp output.png \\[media\\]" to send files\n' +
-            '• The bot watches this directory and sends any new files to you\n\n' +
+            '/screen - Capture terminal screenshot\n' +
+            '/airplane \\[on|off\\] - Toggle text mode\n' +
+            '/md - Show recent markdown files\n' +
+            'Use inline buttons on screenshots for quick actions\n\n' +
+            '*Media Upload:*\n' +
+            'Send photos, videos, audio - auto-saved to received dir\n' +
+            'Use \\[media\\] in commands to reference media path\n\n' +
             '*Other:*\n' +
-            '/start - Show quick start guide\n' +
-            '/help - Show this detailed help\n' +
-            '/macros - Show configured message placeholders (m0-m9)\n' +
-            '/killbot - Shutdown the bot\n\n' +
-            '💡 *Pro Tip:* Send messages directly to interact with the terminal!',
+            '/macros - Show message placeholders (m0-m9)\n' +
+            '/addcoder <name> - Create custom AI assistant\n' +
+            '/removecoder <name> - Remove custom AI assistant\n' +
+            '/killbot - Shutdown the bot',
             { parse_mode: 'Markdown' }
         );
 
