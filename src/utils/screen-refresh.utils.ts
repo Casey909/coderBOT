@@ -8,15 +8,25 @@ import { TextSanitizationUtils } from './text-sanitization.utils.js';
 export class ScreenRefreshUtils {
     /**
      * Create a standard inline keyboard for screen display.
-     * Layout: Refresh button on top, then number buttons.
+     * Layout: Refresh + Esc on top row, then Copilot controls,
+     * then quick number keys for menu selections.
      */
     static createScreenKeyboard(): InlineKeyboard {
         return new InlineKeyboard()
             .text('🔄 Refresh', 'refresh_screen')
+            .text('⎋ Esc', 'key_esc')
+            .row()
+            .text('⇥ Mode', 'key_shifttab')
+            .text('✅ Yes', 'key_ctrly')
+            .text('❌ No', 'key_ctrln')
             .row()
             .text('1', 'num_1')
             .text('2', 'num_2')
-            .text('3', 'num_3');
+            .text('3', 'num_3')
+            .row()
+            .text('📋 /compact', 'cpslash_compact')
+            .text('📊 /diff', 'cpslash_diff')
+            .text('🧠 /model', 'cpslash_model');
     }
     /**
      * Start automatic screen refreshes for a user session.
