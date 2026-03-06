@@ -10,6 +10,7 @@ import { ScreenRefreshUtils } from '../../utils/screen-refresh.utils.js';
 import { CommandMenuUtils } from '../../utils/command-menu.utils.js';
 import { Messages, SuccessMessages, ErrorActions } from '../../constants/messages.js';
 import { TextSanitizationUtils } from '../../utils/text-sanitization.utils.js';
+import { COPILOT_KEY_MAP, SLASH_COMMAND_DELAY_MS } from '../../constants/copilot-keys.js';
 
 export class XtermBot {
     private bot: Bot | null = null;
@@ -537,7 +538,8 @@ export class XtermBot {
                     return;
                 }
 
-                const keyName = callbackData.substring(4); // e.g., 'esc', 'shifttab', 'ctrly', 'ctrln'
+                const keyName = callbackData.substring(4);
+                // Try SPECIAL_KEYS first (xterm.bot's own), then shared COPILOT_KEY_MAP
                 const keyConfig = this.SPECIAL_KEYS[keyName];
                 if (keyConfig) {
                     this.xtermService.writeRawToSession(userId, keyConfig.sequence);
@@ -545,6 +547,13 @@ export class XtermBot {
                         ? SuccessMessages.SENT_CONTROL_KEY(keyConfig.display)
                         : SuccessMessages.SENT_SPECIAL_KEY(keyConfig.display);
                     await this.safeAnswerCallbackQuery(ctx, msg);
+                    this.triggerAutoRefresh(userId, chatId);
+                    return;
+                }
+                const copilotKey = COPILOT_KEY_MAP[keyName];
+                if (copilotKey) {
+                    this.xtermService.writeRawToSession(userId, copilotKey.sequence);
+                    await this.safeAnswerCallbackQuery(ctx, `✅ Sent: ${copilotKey.display}`);
                     this.triggerAutoRefresh(userId, chatId);
                     return;
                 }
@@ -557,9 +566,9 @@ export class XtermBot {
                     return;
                 }
 
-                const slashCmd = callbackData.substring(8); // e.g., 'model', 'compact', 'diff'
+                const slashCmd = callbackData.substring(8);
                 this.xtermService.writeRawToSession(userId, `/${slashCmd}`);
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, SLASH_COMMAND_DELAY_MS));
                 this.xtermService.writeRawToSession(userId, '\r');
                 await this.safeAnswerCallbackQuery(ctx, `✅ Sent: /${slashCmd}`);
                 this.triggerAutoRefresh(userId, chatId);

@@ -14,6 +14,7 @@ import { CommandMenuUtils } from '../../utils/command-menu.utils.js';
 import { TextSanitizationUtils } from '../../utils/text-sanitization.utils.js';
 import { buildTelegramFileUrl } from '../../utils/url-validation.utils.js';
 import { Messages, SuccessMessages, ErrorActions } from '../../constants/messages.js';
+import { COPILOT_KEY_MAP, SLASH_COMMAND_DELAY_MS } from '../../constants/copilot-keys.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
@@ -456,17 +457,8 @@ export class CoderBot {
                     return;
                 }
 
-                const COPILOT_KEYS: Record<string, { sequence: string; display: string }> = {
-                    'esc': { sequence: '\x1b', display: 'Escape' },
-                    'shifttab': { sequence: '\x1b[Z', display: 'Shift+Tab (mode switch)' },
-                    'ctrly': { sequence: '\x19', display: 'Ctrl+Y (accept)' },
-                    'ctrln': { sequence: '\x0e', display: 'Ctrl+N (reject)' },
-                    'ctrlt': { sequence: '\x14', display: 'Ctrl+T (reasoning)' },
-                    'ctrll': { sequence: '\x0c', display: 'Ctrl+L (clear)' },
-                };
-
                 const keyName = callbackData.substring(4);
-                const keyConfig = COPILOT_KEYS[keyName];
+                const keyConfig = COPILOT_KEY_MAP[keyName];
                 if (keyConfig) {
                     this.xtermService.writeRawToSession(userId, keyConfig.sequence);
                     await this.safeAnswerCallbackQuery(ctx, `✅ Sent: ${keyConfig.display}`);
@@ -484,7 +476,7 @@ export class CoderBot {
 
                 const slashCmd = callbackData.substring(8);
                 this.xtermService.writeRawToSession(userId, `/${slashCmd}`);
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, SLASH_COMMAND_DELAY_MS));
                 this.xtermService.writeRawToSession(userId, '\r');
                 await this.safeAnswerCallbackQuery(ctx, `✅ Sent: /${slashCmd}`);
                 this.triggerAutoRefresh(userId, chatId);
@@ -1254,7 +1246,7 @@ export class CoderBot {
             '/ctrln - Reject / decline (Ctrl+N)\n' +
             '/ctrlt - Toggle reasoning visibility (Ctrl+T)\n' +
             '/ctrll - Clear terminal screen (Ctrl+L)\n\n' +
-            '*Copilot Slash Commands* (type as text):\n' +
+            '*Copilot Slash Commands* (prefix with `.` in chat):\n' +
             '`.`/model - Switch AI model\n' +
             '`.`/compact - Compress conversation context\n' +
             '`.`/diff - Review code changes\n' +
@@ -1263,7 +1255,8 @@ export class CoderBot {
             '`.`/clear - Clear conversation history\n' +
             '`.`/bug - Flag a bug for troubleshooting\n' +
             '`.`/session - Show session stats\n' +
-            '`.`/help - Show Copilot commands\n\n' +
+            '`.`/help - Show Copilot commands\n' +
+            '_Or tap buttons on screenshots for /compact, /diff, /model_\n\n' +
             '*Project Management:*\n' +
             '/projects - Browse and select project folder\n' +
             '/project <name> - Select project folder by name\n' +
