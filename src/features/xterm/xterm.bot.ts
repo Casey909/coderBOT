@@ -10,6 +10,7 @@ import { ScreenRefreshUtils } from '../../utils/screen-refresh.utils.js';
 import { CommandMenuUtils } from '../../utils/command-menu.utils.js';
 import { Messages, SuccessMessages, ErrorActions } from '../../constants/messages.js';
 import { TextSanitizationUtils } from '../../utils/text-sanitization.utils.js';
+import { COPILOT_KEY_MAP, SLASH_COMMAND_DELAY_MS } from '../../constants/copilot-keys.js';
 
 export class XtermBot {
     private bot: Bot | null = null;
@@ -57,11 +58,16 @@ export class XtermBot {
 
     private readonly SPECIAL_KEYS: Record<string, { sequence: string; display: string; type: 'special' | 'control' }> = {
         'tab': { sequence: '\t', display: 'Tab character', type: 'special' },
+        'shifttab': { sequence: '\x1b[Z', display: 'Shift+Tab (mode switch)', type: 'special' },
         'enter': { sequence: '\r', display: 'Enter key', type: 'special' },
         'space': { sequence: ' ', display: 'Space character', type: 'special' },
         'delete': { sequence: '\x7f', display: 'Delete key', type: 'special' },
         'ctrlc': { sequence: '\x03', display: 'C', type: 'control' },
         'ctrlx': { sequence: '\x18', display: 'X', type: 'control' },
+        'ctrly': { sequence: '\x19', display: 'Y (accept)', type: 'control' },
+        'ctrln': { sequence: '\x0e', display: 'N (reject)', type: 'control' },
+        'ctrlt': { sequence: '\x14', display: 'T (reasoning)', type: 'control' },
+        'ctrll': { sequence: '\x0c', display: 'L (clear)', type: 'control' },
         'esc': { sequence: '\x1b', display: 'Escape key', type: 'special' },
         'arrowup': { sequence: '\x1b[A', display: 'Arrow Up key', type: 'special' },
         'arrowdown': { sequence: '\x1b[B', display: 'Arrow Down key', type: 'special' },
@@ -525,16 +531,46 @@ export class XtermBot {
                 return;
             }
 
-            // Handle ESC key button
-            if (callbackData === 'key_esc') {
+            // Handle special key buttons from inline keyboard
+            if (callbackData.startsWith('key_')) {
                 if (!this.xtermService.hasSession(userId)) {
                     await this.safeAnswerCallbackQuery(ctx, Messages.NO_ACTIVE_TERMINAL_SESSION);
                     return;
                 }
 
-                const escKey = this.SPECIAL_KEYS['esc'];
-                this.xtermService.writeRawToSession(userId, escKey.sequence);
-                await this.safeAnswerCallbackQuery(ctx, SuccessMessages.SENT_SPECIAL_KEY(escKey.display));
+                const keyName = callbackData.substring(4);
+                // Try SPECIAL_KEYS first (xterm.bot's own), then shared COPILOT_KEY_MAP
+                const keyConfig = this.SPECIAL_KEYS[keyName];
+                if (keyConfig) {
+                    this.xtermService.writeRawToSession(userId, keyConfig.sequence);
+                    const msg = keyConfig.type === 'control'
+                        ? SuccessMessages.SENT_CONTROL_KEY(keyConfig.display)
+                        : SuccessMessages.SENT_SPECIAL_KEY(keyConfig.display);
+                    await this.safeAnswerCallbackQuery(ctx, msg);
+                    this.triggerAutoRefresh(userId, chatId);
+                    return;
+                }
+                const copilotKey = COPILOT_KEY_MAP[keyName];
+                if (copilotKey) {
+                    this.xtermService.writeRawToSession(userId, copilotKey.sequence);
+                    await this.safeAnswerCallbackQuery(ctx, `✅ Sent: ${copilotKey.display}`);
+                    this.triggerAutoRefresh(userId, chatId);
+                    return;
+                }
+            }
+
+            // Handle Copilot slash command buttons
+            if (callbackData.startsWith('cpslash_')) {
+                if (!this.xtermService.hasSession(userId)) {
+                    await this.safeAnswerCallbackQuery(ctx, Messages.NO_ACTIVE_TERMINAL_SESSION);
+                    return;
+                }
+
+                const slashCmd = callbackData.substring(8);
+                this.xtermService.writeRawToSession(userId, `/${slashCmd}`);
+                await new Promise(resolve => setTimeout(resolve, SLASH_COMMAND_DELAY_MS));
+                this.xtermService.writeRawToSession(userId, '\r');
+                await this.safeAnswerCallbackQuery(ctx, `✅ Sent: /${slashCmd}`);
                 this.triggerAutoRefresh(userId, chatId);
                 return;
             }
